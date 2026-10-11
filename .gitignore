@@ -1,0 +1,37 @@
+# Office temporary files (Word / Excel lock files)
+~$*
+.~lock.*
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment & Secret files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Dependencies & Build artifacts (for future microservices)
+node_modules/
+dist/
+build/
+target/
+bin/
+obj/
+__pycache__/
+.venv/
+
+*.xlsx
+*.docx
+AGENT.md
