@@ -1,0 +1,47 @@
+# ============================================================
+# Prometheus scrape configuration
+#
+# Targets use Docker service names, never localhost: Prometheus runs in
+# its own container, so "localhost" inside it means itself.
+#
+# dns_sd_configs is used instead of static_configs because it resolves
+# every replica of a scaled service automatically. When booking-service
+# is scaled to 3 replicas, no edit is needed here.
+# ============================================================
+
+global:
+  # 5s instead of the 15s default: the SLO is measured at a 200ms
+  # threshold, so short spikes must stay visible.
+  scrape_interval: 5s
+  external_labels:
+    monitor: microservices-sla-lab
+
+scrape_configs:
+  # Prometheus monitors itself
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: auth
+    dns_sd_configs:
+      - names: ["auth-service"]
+        type: A
+        port: 8001
+
+  - job_name: catalog
+    dns_sd_configs:
+      - names: ["catalog-service"]
+        type: A
+        port: 8002
+
+  - job_name: booking
+    dns_sd_configs:
+      - names: ["booking-service"]
+        type: A
+        port: 8003
+
+  - job_name: notification
+    dns_sd_configs:
+      - names: ["notification-service"]
+        type: A
+        port: 8004

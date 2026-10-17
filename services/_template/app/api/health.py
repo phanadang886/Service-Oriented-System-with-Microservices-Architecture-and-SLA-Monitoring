@@ -4,9 +4,11 @@ Every service returns the same response shape so the four containers can be
 compared without special-casing. Docker Compose polls this URL to decide
 when a service is ready to accept traffic.
 """
-
+import os
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 
 router = APIRouter()
 
@@ -27,4 +29,4 @@ def health() -> HealthResponse:
     restart the container, and dependency ordering is already handled by
     `depends_on` in docker-compose.yml.
     """
-    return HealthResponse(status="ok", service="replace-with-service-name")
+    return HealthResponse(status="ok", service=SERVICE_NAME)
