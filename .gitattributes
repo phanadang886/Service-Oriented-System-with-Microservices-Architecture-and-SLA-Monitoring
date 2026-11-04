@@ -1,0 +1,38 @@
+# =============================================================================
+# Line ending policy
+# -----------------------------------------------------------------------------
+# Some files run INSIDE Linux containers and break if they contain CRLF.
+# The case that actually bit us: infra/postgres/init-databases.sh with CRLF
+# fails in the postgres container with "\r: command not found", so the four
+# databases are never created and "alembic upgrade head" fails afterwards.
+#
+# "text eol=lf" means: stored as LF in the repo AND checked out as LF,
+# no matter what core.autocrlf says on the developer's machine.
+# =============================================================================
+
+# Shell scripts run inside containers
+*.sh text eol=lf
+
+# Container / image definitions
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Compose and other YAML configs
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Nginx, Prometheus and other .conf files
+*.conf text eol=lf
+
+# Python source
+*.py text eol=lf
+*.pyi text eol=lf
+
+# SQL migrations and seeds
+*.sql text eol=lf
+
+# Env files (no secrets are stored here, only the template)
+.env.example text eol=lf
+
+# Markdown docs: also LF so diffs stay clean across the team
+*.md text eol=lf
