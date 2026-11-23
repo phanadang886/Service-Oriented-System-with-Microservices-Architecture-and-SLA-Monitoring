@@ -568,7 +568,35 @@ Khi thấy tất cả các service hiển thị trạng thái `Up` và `(healthy
 
 ---
 
-### 16.4 Hướng dẫn kiểm tra nhanh luồng Auth & Catalog
+### 16.4 Nạp dữ liệu mẫu (seed)
+
+Danh mục khoa và bác sĩ lấy từ nguồn công khai (xem `data/SOURCES.md`).
+Giá khám, khung giờ và tài khoản thử là dữ liệu **mô phỏng**.
+
+```bash
+# Lần đầu hoặc nạp thêm (bỏ qua bản ghi đã có)
+python scripts/seed.py
+
+# Xoá dữ liệu cũ rồi nạp lại — dùng trước mỗi lần chạy Locust
+python scripts/seed.py --reset
+```
+
+Kết quả mong đợi:
+
+| Bảng | Số dòng |
+|---|---|
+| `departments` | 8 |
+| `doctors` | 60 |
+| `time_slots` | 3600 (60 bác sĩ × 5 ngày × 12 khung) |
+| `users` | 12 (1 ADMIN, 1 DOCTOR, 10 PATIENT) |
+| `appointments` | 20 |
+
+Script xoá cache `catalog:*` sau khi nạp để giao diện thấy dữ liệu mới.
+Chạy lại không `--reset` **không nhân bản dữ liệu**.
+
+---
+
+### 16.5 Hướng dẫn kiểm tra nhanh luồng Auth & Catalog
 
 #### 1. Đăng ký và Đăng nhập (Auth Service)
 * **Đăng ký tài khoản bệnh nhân**:
@@ -595,7 +623,7 @@ Khi thấy tất cả các service hiển thị trạng thái `Up` và `(healthy
 
 ---
 
-### 16.5 Các lỗi thường gặp và cách khắc phục
+### 16.6 Các lỗi thường gặp và cách khắc phục
 
 1. **Lỗi `docker : The term 'docker' is not recognized`**:
    * *Nguyên nhân*: Chưa bật hoặc chưa cài Docker Desktop.
