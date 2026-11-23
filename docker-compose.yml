@@ -1,0 +1,192 @@
+services:
+  # -------------------------------------------------------------
+  # Cơ sở dữ liệu PostgreSQL (Mô hình Database-per-service: 4 DB riêng biệt)
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-multi-postgres-dbs.sql:/docker-entrypoint-initdb.d/init-multi-postgres-dbs.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Redis (Cache cho Catalog, Hàng đợi / Streams cho Booking -> Notification)
+  # -------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Service 1: Auth Service (Port 8001) - Phụ trách: Thành
+  # -------------------------------------------------------------
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      AUTH_SERVICE_PORT: 8001
+      AUTH_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password_dev}@postgres:5432/${AUTH_DB_NAME:-auth_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_super_secret_jwt_key_medical_booking_system_2026}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Service 2: Catalog Service (Port 8002) - Phụ trách: Thành
+  # -------------------------------------------------------------
+  catalog-service:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    restart: always
+    ports:
+      - "8002:8002"
+    environment:
+      CATALOG_SERVICE_PORT: 8002
+      CATALOG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password_dev}@postgres:5432/${CATALOG_DB_NAME:-catalog_db}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_super_secret_jwt_key_medical_booking_system_2026}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Service 3: Booking Service (Port 8003) - Phụ trách: Panh
+  # KHÔNG khai báo container_name để có thể scale: docker compose up -d --scale booking-service=3
+  # -------------------------------------------------------------
+  booking-service:
+    build:
+      context: .
+      dockerfile: services/booking/Dockerfile
+    restart: always
+    ports:
+      - "8003:8003"
+    environment:
+      BOOKING_SERVICE_PORT: 8003
+      BOOKING_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password_dev}@postgres:5432/${BOOKING_DB_NAME:-booking_db}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev_super_secret_jwt_key_medical_booking_system_2026}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Service 4: Notification Service (Port 8004) - Phụ trách: Đông
+  # -------------------------------------------------------------
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    restart: always
+    ports:
+      - "8004:8004"
+    environment:
+      NOTIFICATION_SERVICE_PORT: 8004
+      NOTIFICATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_password_dev}@postgres:5432/${NOTIFICATION_DB_NAME:-notification_db}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # API Gateway (Nginx) - Điểm tiếp nhận duy nhất từ bên ngoài cổng 80
+  # -------------------------------------------------------------
+  api-gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    restart: always
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+      - "8080:80"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+
+  # -------------------------------------------------------------
+  # Giám sát Prometheus & Grafana
+  # -------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
