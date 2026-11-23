@@ -521,4 +521,90 @@ Dự án thuộc hướng **Backend / Platform**. Nếu muốn hướng Data Eng
 | `docs/ghi-chu-quyet-dinh.md` | 11 quyết định kỹ thuật và lý do |
 | `AGENT.md` | Context dự án cho AI hỗ trợ |
 
-> Chưa có mã nguồn. Phần hướng dẫn cài đặt và cấu trúc thư mục sẽ viết sau khi có code — xem `HUONG-DAN-NEWBIE.docx` phụ lục C mục C.4.
+## 16. Hướng dẫn cài đặt và khởi chạy hệ thống (1 câu lệnh)
+
+> Mục này do **Thành** phụ trách theo phân công, giúp GV hoặc thành viên mới clone dự án về là có thể chạy thử ngay.
+
+### 16.1 Yêu cầu môi trường
+* **Hệ điều hành**: Windows 10/11, Linux, hoặc macOS.
+* **Docker Desktop**: Phiên bản mới nhất (đã bật WSL 2 backend trên Windows).
+* **Lưu ý ổ đĩa**: Dung lượng trống tối thiểu 5 GB. Trên Windows, **bắt buộc trỏ Disk image location của Docker Desktop sang ổ D** (ví dụ `D:\DockerData`) để tránh làm tràn ổ C hệ thống.
+
+---
+
+### 16.2 Khởi động toàn bộ hệ thống bằng 1 câu lệnh
+
+**Bước 1**: Tạo file cấu hình từ mẫu:
+```bash
+cp .env.example .env
+# Trên PowerShell Windows:
+Copy-Item .env.example .env
+```
+
+**Bước 2**: Khởi động toàn bộ hệ sinh thái (4 microservices, Postgres, Redis, Nginx, Prometheus, Grafana):
+```bash
+docker compose up --build -d
+```
+
+**Bước 3**: Kiểm tra trạng thái các container:
+```bash
+docker compose ps
+```
+Khi thấy tất cả các service hiển thị trạng thái `Up` và `(healthy)` là hệ thống đã sẵn sàng 100%.
+
+---
+
+### 16.3 Danh sách đường dẫn truy cập nhanh
+
+| Thành phần | Địa chỉ truy cập | Ghi chú |
+|---|---|---|
+| **API Gateway (Nginx)** | `http://localhost/health` hoặc `http://localhost:8080/health` | Cửa ngõ duy nhất định tuyến toàn bộ API |
+| **Auth Service Docs** | `http://localhost:8001/docs` | Swagger UI thử nghiệm đăng ký, đăng nhập |
+| **Catalog Service Docs** | `http://localhost:8002/docs` | Swagger UI xem khoa, bác sĩ, khung giờ khám |
+| **Booking Service Docs** | `http://localhost:8003/docs` | Swagger UI dịch vụ đặt lịch |
+| **Notification Service Docs** | `http://localhost:8004/docs` | Swagger UI dịch vụ thông báo |
+| **Prometheus** | `http://localhost:9090` | Dashboard giám sát số liệu và target scrape |
+| **Grafana** | `http://localhost:3000` | Dashboard đo lường SLO (user: `admin` / pass: `admin`) |
+
+---
+
+### 16.4 Hướng dẫn kiểm tra nhanh luồng Auth & Catalog
+
+#### 1. Đăng ký và Đăng nhập (Auth Service)
+* **Đăng ký tài khoản bệnh nhân**:
+  * Gửi `POST /api/auth/register` với body:
+    ```json
+    {
+      "email": "benhnhan@example.com",
+      "password": "matkhau123",
+      "full_name": "Nguyễn Văn Nam",
+      "role": "PATIENT"
+    }
+    ```
+  * Nhận kết quả `201 Created` kèm thông tin người dùng (mật khẩu đã được mã hóa bcrypt an toàn).
+* **Đăng nhập lấy JWT Token**:
+  * Gửi `POST /api/auth/login` với email và password vừa tạo.
+  * Nhận token `access_token` có hiệu lực trong 3600 giây (1 giờ).
+  * Copy mã token này dán vào nút **Authorize** (`Bearer <token>`) trên Swagger UI để gọi các API yêu cầu xác thực.
+
+#### 2. Xem danh mục và tìm kiếm (Catalog Service)
+* **Lấy danh sách khoa**: Gọi `GET /api/catalog/departments?page=1&limit=20`.
+* **Lấy danh sách bác sĩ & lọc theo khoa**: Gọi `GET /api/catalog/doctors?department_id=<id_khoa>&page=1&limit=20`.
+* **Tìm kiếm bác sĩ theo tên**: Gọi `GET /api/catalog/doctors?q=Minh`.
+* **Xem khung giờ khám còn trống**: Gọi `GET /api/catalog/doctors/{id}/slots`.
+
+---
+
+### 16.5 Các lỗi thường gặp và cách khắc phục
+
+1. **Lỗi `docker : The term 'docker' is not recognized`**:
+   * *Nguyên nhân*: Chưa bật hoặc chưa cài Docker Desktop.
+   * *Khắc phục*: Cài Docker Desktop, bật ứng dụng cho đến khi góc trái hiện `Engine running`.
+2. **Lỗi `permission denied while trying to connect to docker_engine`**:
+   * *Nguyên nhân*: Docker Desktop chưa mở hoặc Windows chưa cập nhật quyền người dùng.
+   * *Khắc phục*: Mở ứng dụng Docker Desktop, hoặc restart máy tính một lần nếu mới cài đặt.
+3. **Lỗi đụng độ cổng 80 trên Windows (IIS chiếm cổng 80)**:
+   * *Khắc phục*: Hệ thống đã mở sẵn cổng dự phòng `8080`. Bạn có thể truy cập qua `http://localhost:8080/health`.
+4. **Cách dừng và dọn dẹp hệ thống**:
+   * Dừng tạm thời (giữ dữ liệu DB): `docker compose down`
+   * Dừng và xóa sạch dữ liệu để test lại từ đầu: `docker compose down -v`

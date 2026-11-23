@@ -1,12 +1,16 @@
-"""Moi truong Alembic cho catalog_db.
+"""Alembic environment for catalog_db.
 
-Chay tu thu muc goc du an:
+Run from the repository root:
     alembic -c services/catalog/alembic.ini upgrade head
+
+The container entrypoint runs the same file on startup, so the schema is
+always created from migrations.
 """
 import os
+import sys
 from logging.config import fileConfig
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import urlsplit, urlunsplit
 
 from alembic import context
 from dotenv import load_dotenv
@@ -15,6 +19,13 @@ from sqlalchemy import engine_from_config, pool
 ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(ROOT / ".env")
 
+# Lets Alembic import "services.catalog.app.models" from the repository root.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from services.catalog.app.database import Base  # noqa: E402
+import services.catalog.app.models  # noqa: E402,F401  (registers the tables)
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -22,17 +33,25 @@ if config.config_file_name is not None:
 
 
 def database_url() -> str:
-    user = os.environ["POSTGRES_USER"]
-    password = quote_plus(os.environ["POSTGRES_PASSWORD"])
-    host = os.getenv("ALEMBIC_DB_HOST", "localhost")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    name = os.environ["CATALOG_DB_NAME"]
-    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
+    url = os.getenv("CATALOG_DATABASE_URL") or os.getenv("CATALOG_DB_URL")
+    if not url:
+        raise RuntimeError("CATALOG_DATABASE_URL (or CATALOG_DB_URL) is not set")
+
+    url = url.replace("+asyncpg", "+psycopg")
+
+    in_container = Path("/.dockerenv").exists()
+    host = os.getenv("ALEMBIC_DB_HOST") or ("postgres" if in_container else "localhost")
+
+    parts = urlsplit(url)
+    port = parts.port or 5432
+    userinfo = parts.netloc.rsplit("@", 1)[0] if "@" in parts.netloc else ""
+    new_netloc = f"{userinfo}@{host}:{port}" if userinfo else f"{host}:{port}"
+    return urlunsplit((parts.scheme, new_netloc, parts.path, parts.query, parts.fragment))
 
 
 config.set_main_option("sqlalchemy.url", database_url())
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
